@@ -68,7 +68,8 @@ module S3sync
                                    [ '--cache-control',  GetoptLong::REQUIRED_ARGUMENT ],
                                    [ '--exclude',        GetoptLong::REQUIRED_ARGUMENT ],
                                    [ '--make-dirs',	GetoptLong::NO_ARGUMENT ],
-                                   [ '--no-md5',	GetoptLong::NO_ARGUMENT ]           
+                                   [ '--no-md5',	GetoptLong::NO_ARGUMENT ],
+                                   [ '--reduced-redundancy', GetoptLong::NO_ARGUMENT]
                                    )
 			  
     def S3sync.usage(message = nil)
@@ -80,7 +81,7 @@ module S3sync
   --ssl     -s          --recursive   -r     --delete
   --public-read -p      --expires="<exp>"    --cache-control="<cc>"
   --exclude="<regexp>"  --progress           --debug   -d
-  --make-dirs           --no-md5
+  --make-dirs           --no-md5             --reduced-redundancy
 One of <source> or <destination> must be of S3 format, the other a local path.
 Reminders:
 * An S3 formatted item with bucket 'mybucket' and prefix 'mypre' looks like:
@@ -503,6 +504,7 @@ ENDUSAGE
           debug(@path)
           headers = {'Content-Length' => (fromNode.size.respond_to?(:nonzero?) ? fromNode.size.to_s : '0')}
           headers['x-amz-acl'] = 'public-read' if $S3syncOptions['--public-read']
+	  headers['x-amz-storage-class'] = 'REDUCED_REDUNDANCY' if $S3syncOptions['--reduced-redundancy']
           headers['Expires'] = $S3syncOptions['--expires'] if $S3syncOptions['--expires']
           headers['Cache-Control'] = $S3syncOptions['--cache-control'] if $S3syncOptions['--cache-control']
           fType = @path.split('.').last

@@ -225,6 +225,11 @@ contact me at gbs-s3@10forward.com too.
 Change Log:
 -----------
 
+2012-09-05:
+Added support for --reduced-latency 
+
+Select reduced redundancy storage (http://aws.amazon.com/about-aws/whats-new/2010/05/19/announcing-amazon-s3-reduced-redundancy-storage/) for newly created objects.
+
 2006-09-29:
 Added support for --expires and --cache-control. Eg:
 --expires="Thu, 01 Dec 2007 16:00:00 GMT"
