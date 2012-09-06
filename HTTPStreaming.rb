@@ -1,13 +1,13 @@
-# This software code is made available "AS IS" without warranties of any        
-# kind.  You may copy, display, modify and redistribute the software            
-# code either by itself or as incorporated into your code; provided that        
-# you do not remove any proprietary notices.  Your use of this software         
+# This software code is made available "AS IS" without warranties of any
+# kind.  You may copy, display, modify and redistribute the software
+# code either by itself or as incorporated into your code; provided that
+# you do not remove any proprietary notices.  Your use of this software
 # code is at your own risk and you waive any claim against the author
-# with respect to your use of this software code. 
+# with respect to your use of this software code.
 # (c) 2007 s3sync.net
 #
 
-# The purpose of this file is to overlay the net/http library 
+# The purpose of this file is to overlay the net/http library
 # to add some functionality
 # (without changing the file itself or requiring a specific version)
 # It still isn't perfectly robust, i.e. if radical changes are made
@@ -23,12 +23,12 @@ module Net
 	# Allow an IO stream argument to stream the response body out
 	class HTTP
 		alias _HTTPStreaming_request request
-		
+
 		def request(req, body = nil, streamResponseBodyTo = nil, &block)
 			if not block_given? and streamResponseBodyTo and streamResponseBodyTo.respond_to?(:write)
 				$stderr.puts "Response using streaming" if $HTTPStreamingDebug
 				# this might be a retry, we should make sure the stream is at its beginning
-				streamResponseBodyTo.rewind if streamResponseBodyTo.respond_to?(:rewind) and streamResponseBodyTo != $stdout 
+				streamResponseBodyTo.rewind if streamResponseBodyTo.respond_to?(:rewind) and streamResponseBodyTo != $stdout
 				block = proc do |res|
 					res.read_body do |chunk|
 						streamResponseBodyTo.write(chunk)
@@ -38,7 +38,7 @@ module Net
 			if body != nil && body.respond_to?(:read)
 				$stderr.puts "Request using streaming" if $HTTPStreamingDebug
 				# this might be a retry, we should make sure the stream is at its beginning
-				body.rewind if body.respond_to?(:rewind) 
+				body.rewind if body.respond_to?(:rewind)
 				req.body_stream = body
 				return _HTTPStreaming_request(req, nil, &block)
 			else
@@ -69,8 +69,8 @@ module S3sync
             if(now - @last > 1) # don't do this oftener than once per second
                 @printed = true
                 begin
-                    $stdout.printf("\rProgress: %db  %db/s  %s       ", @transferred, (@transferred/(now - @start)).floor, 
-                                   @total > 0? (100 * @transferred/@total).floor.to_s + "%" : ""  
+                    $stdout.printf("\rProgress: %db  %db/s  %s       ", @transferred, (@transferred/(now - @start)).floor,
+                                   @total > 0? (100 * @transferred/@total).floor.to_s + "%" : ""
                                   )
                 rescue FloatDomainError
                     #wtf?
@@ -86,9 +86,9 @@ module S3sync
             now = Time.new
             if(now -@last > 1) # don't do this oftener than once per second
                 @printed = true
-                $stdout.printf("\rProgress: %db  %db/s  %s       ", @transferred, (@transferred/(now - @start)).floor, 
-                               @total > 0? (100 * @transferred/@total).floor.to_s + "%" : ""  
-                              )  
+                $stdout.printf("\rProgress: %db  %db/s  %s       ", @transferred, (@transferred/(now - @start)).floor,
+                               @total > 0? (100 * @transferred/@total).floor.to_s + "%" : ""
+                              )
                               $stdout.flush
                               @last = now
             end
@@ -107,18 +107,19 @@ module S3sync
 
     class LimitStream < SimpleDelegator
         def initialize(s, bwlimit=0)
-            @start = @last = Time.new
-
-            @closed = false
             @innerStream = s
             super(@innerStream)
             __setobj__(@innerStream)
 
+            @limit_rate = bwlimit
             @transfer_max = bwlimit * 128;
             @transfer_max = 512 if (@transfer_max < 512)
+            init_bwlimit
+        end
+
+        def init_bwlimit
             @chunk_start = Time.now()
             @chunk_bytes = 0
-            @limit_rate = bwlimit
             @sleep_adjust = 0.0
         end
 
@@ -142,6 +143,7 @@ module S3sync
                 sleep to_sleep
                 t1 = Time.now()
                 @sleep_adjust = to_sleep - (t1 - t0)
+                # really large values may be do to suspension, not scheduling
                 sleep_adjust = 0.5 if @sleep_adjust > 0.5
                 sleep_adjust = -0.5 if @sleep_adjust < -0.5
             end
@@ -153,32 +155,30 @@ module S3sync
         def read(i)
             to_do = [i, @transfer_max].min
             res = @innerStream.read(to_do)
-            @transferred += res.respond_to?(:length) ? res.length : 0
             sleep_for_bwlimit(bytes)
             res
         end
 
         def write(s)
-            @transferred += s.length
-            res = @innerStream.write(s)
-            now = Time.new
-            if(now -@last > 1) # don't do this oftener than once per second
-                @printed = true
-                $stdout.printf("\rProgress: %db  %db/s  %s       ", @transferred, (@transferred/(now - @start)).floor, 
-                               @total > 0? (100 * @transferred/@total).floor.to_s + "%" : ""  
-                              )  
-                              $stdout.flush
-                              @last = now
+            written=0
+            total = s.length
+            while written < total
+                to_write = [s.length, @transfer_max]
+                bytes = @innerStream.write(s)
+                sleep_for_bwlimit(bytes)
+                written += bytes
+                if written < total
+                    s = s[written..-1]
+                end
+                wait_for_bwlimit
             end
-            res
+            return written
         end
         def rewind()
-            @transferred = 0
+            init_bwlimit
             @innerStream.rewind if @innerStream.respond_to?(:rewind)
         end
         def close()
-            $stdout.printf("\n") if @printed and not @closed
-            @closed = true
             @innerStream.close
         end
     end
